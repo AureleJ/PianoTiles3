@@ -32,8 +32,10 @@
 #include "task.h"
 #include "interfaces.h"
 #include "display.h"
+#include "screen.h"
 #include "stm32f4xx_hal.h"
 #include <stdio.h>
+#include "GUI.h"
 
 #define MODE 0 // 0 = graphes, 1 = console, 2 = Console+Trace
 #define STACK_SIZE 128 // A ajuster !!
@@ -116,37 +118,51 @@ void affTexte(char *m)
 		l = NLMIN;
 }
 
-void Graphe_Thread(void *p)
+
+
+void Screen_Thread(void *p)
 {
-	int i = 0;
-	char buf[100];
-	/* Init the STemWin GUI Library */
-	GUI_Init();
-	GUI_Initialized = 1;
+	int XScreenSize   = LCD_GetXSize();
+	int YScreenSize   = LCD_GetYSize();
+	int ui_box_width  = XScreenSize / 2;
+	int ui_box_height = YScreenSize / 7;
 
-	/* Initialize RTC and Backup */
-	RTC_Init();
+	GUI_Clear();
+	display_init_screen();
 
-	/* Activate the use of memory device feature */
-	WM_SetCreateFlags(WM_CF_MEMDEV);
+	DrawNote_t val;
+	val.piste_num = 1;
+	val.height = 30;
 
-	/* Do the calibration if needed */
-	CALIBRATION_Check();
+	val.y= (ui_box_height + 1) - val.height;
 
-	/* Start graph */
-	if (MODE)
-		display2();
-	while (1)
-	{
-		if (MODE == 0)
-			display();
-		else
-		{ // MODE = 0
-			sprintf(buf, "Ligne du message no %d\n", i++);
-			affTexte(buf);
-			msleep(50);
+	int score = 67;
+	int last_score = 0;
+
+    while (1)
+    {
+    	clear_note(val);
+
+		val.y += 2;
+
+		if (val.y >= YScreenSize - 3) {
+			val.y = (ui_box_height + 1) - val.height;
+			val.piste_num = (val.piste_num + 1) % 4;
 		}
-	}
+
+		display_note(val, val.y);
+
+		Draw_note_line();
+		Draw_bottom_line();
+
+		if (score != last_score)
+		{
+			display_score(score);
+			last_score = score;
+		}
+
+		msleep(20);
+    }
 }
 
 void Cursor_Thread(void *p)
@@ -184,20 +200,27 @@ void Cursor_Thread(void *p)
 	}
 }
 
+
 /**
  * @brief  Main program.
  */
 int main(void)
 {
+
+	HAL_Init();
+
 	interfaces_init();
 	User_Buttons_Init();
 	User_PWM_Buzzer_Init();
 
+	GUI_Init();
+	GUI_Initialized = 1;
+
 	/* Creation des threads */
-	if (!(pdPASS == xTaskCreate(Graphe_Thread, "Graphe", STACK_SIZE * 4, NULL, 2, NULL)))
+	if (!(pdPASS == xTaskCreate(Cursor_Thread, "Cursor", STACK_SIZE * 4, NULL, 1, NULL)))
 		goto err;
-	if (!(pdPASS == xTaskCreate(Cursor_Thread, "Cursor", STACK_SIZE * 4, NULL, 2, NULL)))
-		goto err;
+	if (!(pdPASS == xTaskCreate(Screen_Thread, "Screen", STACK_SIZE * 4, NULL, 1, NULL)))
+			goto err;
 
 	/* on lance le systeme ! */
 	vTaskStartScheduler();
