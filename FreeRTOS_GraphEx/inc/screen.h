@@ -1,7 +1,24 @@
 #include "GUI.h"
+
+#if GUI_WINSUPPORT
+  #include "WM.h"
+
+  #include "CHECKBOX.h"
+  #include "FRAMEWIN.h"
+  #include "PROGBAR.h"
+  #include "TEXT.h"
+  #include "BUTTON.h"
+  #include "SLIDER.h"
+  #include "HEADER.h"
+  #include "GRAPH.h"
+  #include "ICONVIEW.h"
+  #include "LISTVIEW.h"
+  #include "TREEVIEW.h"
+  #include "DIALOG.h"
+#endif
+
 #include <stdint.h>
-
-
+#include <stdbool.h>
 
 #define MAKE_COLOR(R, G, B)   (((uint32_t)(B) << 16) | ((uint32_t)(G) << 8) | (R))
 
@@ -24,12 +41,14 @@
 #define COLOR_LANE_LINE          MAKE_COLOR(0x24, 0x30, 0x47) // Séparation entre les 4 colonnes
 #define COLOR_HIT_LINE           MAKE_COLOR(0xFF, 0xE6, 0x00) // Ligne cible en bas (Jaune)
 
-
-typedef struct
-{
-    uint8_t piste_num;
+typedef struct {
+    uint8_t  piste_num;
+    uint32_t spawn_ms;
+    uint32_t duration_ms;
     int height;
-    int y; // position vertical
+    int y;
+    bool pressed;
+    bool fail;
 } DrawNote_t;
 
 
@@ -42,3 +61,5 @@ void display_score(int score);
 void clear_note(DrawNote_t val);
 void Draw_note_line();
 void Draw_bottom_line();
+void clear_piste();
+void display_fail_note(int piste_num);

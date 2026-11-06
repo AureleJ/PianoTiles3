@@ -125,6 +125,17 @@ void clear_note(DrawNote_t val)
     }
 }
 
+void display_fail_note(int piste_num)
+{
+    int step = XScreenSize / NB_PISTE;
+    int x0 = piste_num * step + 4;
+    int x1 = (piste_num + 1) * step - 3;
+    int y0 = ui_box_height + 3;
+    int y1 = YScreenSize - 3;
+    GUI_SetColor(COLOR_TILE_PRESSED_MISS);
+    GUI_FillRect(x0, y0, x1, y1);
+}
+
 void display_note(DrawNote_t val, int y)
 {
     int step = XScreenSize / NB_PISTE;
@@ -138,8 +149,18 @@ void display_note(DrawNote_t val, int y)
     if (y1 > YScreenSize - 3) y1 = YScreenSize - 3;
 
     if (y0 < y1) {
-        GUI_SetColor(COLOR_TILE_FALLING);
-        GUI_FillRect(x0, y0, x1, y1);
+        if (val.pressed)
+        {
+            GUI_SetColor(COLOR_TILE_PRESSED_OK);
+            GUI_FillRect(x0, y0, x1, y1);
+        }
+        else
+        {
+            GUI_SetColor(COLOR_TILE_FALLING);
+            GUI_FillRect(x0, y0, x1, y1);
+        }
+
+
     }
 }
 
