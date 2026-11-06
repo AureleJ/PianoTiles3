@@ -31,6 +31,7 @@
 #include "FreeRTOS.h"
 #include "task.h"
 #include "queue.h"
+#include "semphr.h"
 #include "interfaces.h"
 #include "display.h"
 #include "screen.h"
@@ -48,6 +49,7 @@ TIM_HandleTypeDef htim3;
 
 QueueHandle_t xNotesQueue;
 QueueHandle_t xPressedPisteQueue;
+QueueHandle_t xButtonQueue;
 SemaphoreHandle_t xScoreSemaphore = NULL;
 
 void HAL_TIM_PWM_MspInit(TIM_HandleTypeDef *htim)
@@ -75,11 +77,19 @@ void User_Buttons_Init(void)
     __HAL_RCC_GPIOE_CLK_ENABLE();
     __HAL_RCC_GPIOG_CLK_ENABLE();
 
-    GPIO_InitStruct.Pin = GPIO_PIN_2 | GPIO_PIN_3 | GPIO_PIN_4 | GPIO_PIN_5;
-    GPIO_InitStruct.Mode = GPIO_MODE_INPUT;
+    GPIO_InitStruct.Pin  = GPIO_PIN_2 | GPIO_PIN_3 | GPIO_PIN_4 | GPIO_PIN_5;
+    GPIO_InitStruct.Mode = GPIO_MODE_IT_RISING;
     GPIO_InitStruct.Pull = GPIO_PULLDOWN;
-    GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_LOW;
     HAL_GPIO_Init(GPIOE, &GPIO_InitStruct);
+
+    HAL_NVIC_SetPriority(EXTI2_IRQn, 5, 0);
+    HAL_NVIC_EnableIRQ(EXTI2_IRQn);
+    HAL_NVIC_SetPriority(EXTI3_IRQn, 5, 0);
+    HAL_NVIC_EnableIRQ(EXTI3_IRQn);
+    HAL_NVIC_SetPriority(EXTI4_IRQn, 5, 0);
+    HAL_NVIC_EnableIRQ(EXTI4_IRQn);
+    HAL_NVIC_SetPriority(EXTI9_5_IRQn, 5, 0);
+    HAL_NVIC_EnableIRQ(EXTI9_5_IRQn);
 
     GPIO_InitStruct.Pin = GPIO_PIN_14;
 	GPIO_InitStruct.Mode = GPIO_MODE_OUTPUT_PP;
@@ -92,6 +102,20 @@ void User_Buttons_Init(void)
 	GPIO_InitStruct.Pull = GPIO_NOPULL;
 	GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_LOW;
 	HAL_GPIO_Init(GPIOG, &GPIO_InitStruct);
+}
+
+void HAL_GPIO_EXTI_Callback(uint16_t GPIO_Pin)
+{
+    uint8_t piste;
+    if (GPIO_Pin == GPIO_PIN_2) piste = 0;
+    else if (GPIO_Pin == GPIO_PIN_3) piste = 1;
+    else if (GPIO_Pin == GPIO_PIN_4) piste = 2;
+    else if (GPIO_Pin == GPIO_PIN_5) piste = 3;
+    else return;
+
+    BaseType_t xHigherPriorityTaskWoken = pdFALSE;
+    xQueueSendFromISR(xButtonQueue, &piste, &xHigherPriorityTaskWoken);
+    portYIELD_FROM_ISR(xHigherPriorityTaskWoken);
 }
 
 void User_PWM_Buzzer_Init(void)
@@ -115,86 +139,82 @@ void User_PWM_Buzzer_Init(void)
 /* Threads functions ---------------------------------------------------------*/
 
 typedef enum {
-    DO    = 262,
-    DO_D  = 277,
-    RE    = 294,
-    RE_D  = 311,
-    MI    = 330,
-    FA    = 349,
-    FA_D  = 370,
-    SOL   = 392,
+    DO = 262,
+    DO_D = 277,
+    RE = 294,
+    RE_D = 311,
+    MI = 330,
+    FA = 349,
+    FA_D = 370,
+    SOL = 392,
     SOL_D = 415,
-    LA    = 440,
-    LA_D  = 466,
-    SI    = 494
+    LA = 440,
+    LA_D = 466,
+    SI = 494
 } PITCHES;
 
 typedef enum {
-    CROCHE          = 300,
-    NOIRE           = 600,
-    NOIRE_POINTEE   = 900,
-    BLANCHE         = 1200,
+    CROCHE = 300,
+    NOIRE = 600,
+    NOIRE_POINTEE = 900,
+    BLANCHE = 1200,
     BLANCHE_POINTEE = 1800,
-    RONDE           = 2400
+    RONDE = 2400
 } TEMPOS;
 
 typedef struct {
     uint32_t time_ms;
     uint16_t duration_ms;
     PITCHES  pitch;
-    uint8_t pist_num;
+    uint8_t  pist_num;
 } note_t;
+
 
 const note_t PARTITION[] =
 {
-    /* Mesures 1 & 2 : Thème principal */
-    {     0, NOIRE,           SOL,   1 },
-    {   600, NOIRE,           SOL,   3 },
-    {  1200, NOIRE,           SOL,   0 },
-    {  1800, CROCHE,          RE_D,  2 },
-    {  2100, CROCHE,          LA_D,  0 },
-    {  2400, NOIRE,           SOL,   3 },
-    {  3000, CROCHE,          RE_D,  1 },
-    {  3300, CROCHE,          LA_D,  2 },
-    {  3600, BLANCHE,         SOL,   0 },
+    {     0, NOIRE,   SOL,   1 },
+    {   600, NOIRE,   SOL,   3 },
+    {  1200, NOIRE,   SOL,   0 },
+    {  1800, CROCHE,  RE_D,  2 },
+    {  2100, CROCHE,  LA_D,  0 },
+    {  2400, NOIRE,   SOL,   3 },
+    {  3000, CROCHE,  RE_D,  1 },
+    {  3300, CROCHE,  LA_D,  2 },
+    {  3600, BLANCHE, SOL,   0 },
 
-    /* Mesures 3 & 4 : Montée / Seconde phrase */
-    {  4800, NOIRE,           RE,    2 },
-    {  5400, NOIRE,           RE,    0 },
-    {  6000, NOIRE,           RE,    3 },
-    {  6600, CROCHE,          RE_D,  1 },
-    {  6900, CROCHE,          LA_D,  3 },
-    {  7200, NOIRE,           FA_D,  0 },
-    {  7800, CROCHE,          RE_D,  2 },
-    {  8100, CROCHE,          LA_D,  1 },
-    {  8400, BLANCHE,         SOL,   3 },
+    {  4800, NOIRE,    RE,    2 },
+    {  5400, NOIRE,    RE,    0 },
+    {  6000, NOIRE,    RE,    3 },
+    {  6600, CROCHE,   RE_D,  1 },
+    {  6900, CROCHE,   LA_D,  3 },
+    {  7200, NOIRE,    FA_D,  0 },
+    {  7800, CROCHE,   RE_D,  2 },
+    {  8100, CROCHE,   LA_D,  1 },
+    {  8400, BLANCHE,  SOL,   3 },
 
-    /* Mesures 5 & 6 : Deuxième section */
-    {  9600, NOIRE,           SOL,   0 },
-    { 10200, CROCHE,          SOL,   2 },
-    { 10500, CROCHE,          SOL,   1 },
-    { 10800, NOIRE,           SOL,   3 },
-    { 11400, CROCHE,          FA_D,  0 },
-    { 11700, CROCHE,          FA,    2 },
-    { 12000, CROCHE,          MI,    1 },
-    { 12300, CROCHE,          RE_D,  3 },
-    { 12600, NOIRE,           MI,    0 },
+    {  9600, NOIRE,    SOL,   0 },
+    { 10200, CROCHE,   SOL,   2 },
+    { 10500, CROCHE,   SOL,   1 },
+    { 10800, NOIRE,    SOL,   3 },
+    { 11400, CROCHE,   FA_D,  0 },
+    { 11700, CROCHE,   FA,    2 },
+    { 12000, CROCHE,   MI,    1 },
+    { 12300, CROCHE,   RE_D,  3 },
+    { 12600, NOIRE,    MI,    0 },
 
-    /* Transition */
-    { 13200, CROCHE,          SOL_D, 2 },
-    { 13500, NOIRE,           DO_D,  1 },
-    { 14100, CROCHE,          DO,    3 },
-    { 14400, CROCHE,          SI,    0 },
-    { 14700, CROCHE,          LA_D,  2 },
-    { 15000, CROCHE,          LA,    1 },
-    { 15300, NOIRE,           LA_D,  3 },
+    { 13200, CROCHE,   SOL_D, 2 },
+    { 13500, NOIRE,    DO_D,  1 },
+    { 14100, CROCHE,   DO,    3 },
+    { 14400, CROCHE,   SI,    0 },
+    { 14700, CROCHE,   LA_D,  2 },
+    { 15000, CROCHE,   LA,    1 },
+    { 15300, NOIRE,    LA_D,  3 },
 
-    /* Résolution */
-    { 15900, CROCHE,          RE_D,  0 },
-    { 16200, NOIRE,           FA_D,  2 },
-    { 16800, CROCHE,          RE_D,  1 },
-    { 17100, CROCHE,          LA_D,  3 },
-    { 17400, BLANCHE,         SOL,   0 },
+    { 15900, CROCHE,   RE_D,  0 },
+    { 16200, NOIRE,    FA_D,  2 },
+    { 16800, CROCHE,   RE_D,  1 },
+    { 17100, CROCHE,   LA_D,  3 },
+    { 17400, BLANCHE,  SOL,   0 },
 };
 
 typedef struct {
@@ -208,7 +228,6 @@ typedef struct {
 } UiSlot_t;
 
 #define PARTITION_LENGTH (sizeof(PARTITION) / sizeof(PARTITION[0]))
-#define PITCH_COUNT (sizeof(PITCHES) / sizeof(PITCHES[0]))
 
 #define TIMER_TICK_HZ 1000000UL
 #define BUZZER_DUTY_PERCENT 25
@@ -235,7 +254,7 @@ static int protectedScore = 0;
 
 void get_score(int *score)
 {
-	if( xSemaphoreTake(xScoreSemaphore, portMAX_DELAY) == pdTRUE )
+	if (xSemaphoreTake(xScoreSemaphore, portMAX_DELAY) == pdTRUE)
 	{
 		*score = protectedScore;
 		xSemaphoreGive(xScoreSemaphore);
@@ -244,7 +263,7 @@ void get_score(int *score)
 
 void set_score(int score)
 {
-	if( xSemaphoreTake(xScoreSemaphore, portMAX_DELAY) == pdTRUE )
+	if (xSemaphoreTake(xScoreSemaphore, portMAX_DELAY) == pdTRUE)
 	{
 		protectedScore = score;
 		xSemaphoreGive(xScoreSemaphore);
@@ -252,9 +271,8 @@ void set_score(int score)
 }
 
 #define FALL_DURATION_MS 5000
-#define HIT_TOLERANCE_MS 250
-#define HIT_LINE_OFFSET 40
-#define SONG_GAP_MS 1000
+#define HIT_LINE_OFFSET  40
+#define SONG_GAP_MS      1000
 
 #define FALL_TICKS pdMS_TO_TICKS(FALL_DURATION_MS)
 
@@ -287,7 +305,9 @@ void Screen_Thread(void *p)
 
     UiSlot_t slots[UI_BUFF_SIZE];
     for (int i = 0; i < UI_BUFF_SIZE; i++)
+    {
         slots[i].active = 0;
+    }
 
     int last_score = -1;
     TickType_t xLastWake = xTaskGetTickCount();
@@ -315,32 +335,28 @@ void Screen_Thread(void *p)
         }
 
         PressedPiste_t temp2;
-        int max = 0;
-        int index = 0;
-        int check = 0;
+        while (xQueueReceive(xPressedPisteQueue, &temp2, 0) == pdPASS)
+        {
+            if (temp2.is_failed)
+                continue;
 
-		while (xQueueReceive(xPressedPisteQueue, &temp2, 0) == pdPASS)
-		{
-			for (int i = 0; i < UI_BUFF_SIZE; i++)
-			{
-				if(!slots[i].active) continue;
+            int   best    = -1;
+            int   bestY   = -1;
+            for (int i = 0; i < UI_BUFF_SIZE; i++)
+            {
+                if (!slots[i].active || slots[i].note.piste_num != temp2.pist_num)
+                    continue;
 
-				if (!temp2.is_failed && slots[i].note.piste_num == temp2.pist_num)
-				{
-					if (slots[i].note.y > max) {
-						max = slots[i].note.y;
-						index = i;
-						check = 1;
-					}
-				}
-			}
+                if (slots[i].note.y > bestY)
+                {
+                    bestY = slots[i].note.y;
+                    best  = i;
+                }
+            }
 
-			if (check)
-			{
-				slots[index].note.pressed = true;
-				check = 0;
-			}
-		}
+            if (best >= 0)
+                slots[best].note.pressed = true;
+        }
 
         for (int i = 0; i < UI_BUFF_SIZE; i++)
         {
@@ -386,9 +402,9 @@ void Engine_Thread(void *p)
 {
     BuffNote_t buff[BUFF_SIZE];
     for (int i = 0; i < BUFF_SIZE; i++)
+    {
         buff[i].active = 0;
-
-    uint8_t previousBtn[NUM_PISTES] = {0};
+    }
 
     const TickType_t songTicks = pdMS_TO_TICKS(PARTITION[PARTITION_LENGTH - 1].time_ms + PARTITION[PARTITION_LENGTH - 1].duration_ms + SONG_GAP_MS);
 
@@ -403,6 +419,7 @@ void Engine_Thread(void *p)
     {
         TickType_t now = xTaskGetTickCount();
 
+        /* Apparition des notes de la partition */
         while (noteIndex < PARTITION_LENGTH)
         {
             TickType_t spawn = songStart + pdMS_TO_TICKS(PARTITION[noteIndex].time_ms);
@@ -413,7 +430,7 @@ void Engine_Thread(void *p)
                 .piste_num = PARTITION[noteIndex].pist_num,
                 .spawn_ms = spawn,
                 .duration_ms = PARTITION[noteIndex].duration_ms,
-				.pressed = false
+                .pressed = false
             };
             xQueueSend(xNotesQueue, &drawNote, 0);
 
@@ -431,41 +448,34 @@ void Engine_Thread(void *p)
             noteIndex++;
         }
 
+        /* Fin de partition donc on reboucle */
         if (noteIndex >= PARTITION_LENGTH && tick_diff(now, songStart + songTicks) >= 0)
         {
             songStart += songTicks;
             noteIndex = 0;
         }
 
-        uint8_t btn[NUM_PISTES];
-        btn[0] = (HAL_GPIO_ReadPin(GPIOE, GPIO_PIN_2) == GPIO_PIN_SET);
-        btn[1] = (HAL_GPIO_ReadPin(GPIOE, GPIO_PIN_3) == GPIO_PIN_SET);
-        btn[2] = (HAL_GPIO_ReadPin(GPIOE, GPIO_PIN_4) == GPIO_PIN_SET);
-        btn[3] = (HAL_GPIO_ReadPin(GPIOE, GPIO_PIN_5) == GPIO_PIN_SET);
-
-        for (uint8_t piste = 0; piste < NUM_PISTES; piste++)
+        uint8_t pisteReceive;
+        while (xQueueReceive(xButtonQueue, &pisteReceive, 0) == pdPASS)
         {
-            if (!btn[piste] || previousBtn[piste])
-                continue;
-
             int best = -1;
-			TickType_t bestHit = 0;
-			for (int k = 0; k < BUFF_SIZE; k++)
-			{
-				if (!buff[k].active || buff[k].piste_num != piste)
-					continue;
+            TickType_t bestHit = 0;
+            for (int k = 0; k < BUFF_SIZE; k++)
+            {
+                if (!buff[k].active || buff[k].piste_num != pisteReceive)
+                    continue;
 
-				TickType_t winEnd = buff[k].hit_tick + pdMS_TO_TICKS(PARTITION[buff[k].partitionIndex].duration_ms);
+                TickType_t winEnd = buff[k].hit_tick + pdMS_TO_TICKS(PARTITION[buff[k].partitionIndex].duration_ms);
 
-				if (tick_diff(now, buff[k].hit_tick - pdMS_TO_TICKS(PARTITION[buff[k].partitionIndex].duration_ms  - HIT_TOLERANCE_MS)) >= 0 && tick_diff(now, winEnd) <= 0)
-				{
-					if (best < 0 || tick_diff(buff[k].hit_tick, bestHit) < 0)
-					{
-						best = k;
-						bestHit = buff[k].hit_tick;
-					}
-				}
-			}
+                if (tick_diff(now, buff[k].hit_tick) >= 0 && tick_diff(now, winEnd) <= 0)
+                {
+                    if (best < 0 || tick_diff(buff[k].hit_tick, bestHit) < 0)
+                    {
+                        best = k;
+                        bestHit = buff[k].hit_tick;
+                    }
+                }
+            }
 
             // Si la note est valide
             if (best >= 0)
@@ -474,8 +484,8 @@ void Engine_Thread(void *p)
                 buff[best].active = 0;
 
                 PressedPiste_t pressedPiste = {
-                	.pist_num = piste,
-                	.is_failed = 0
+                    .pist_num  = pisteReceive,
+                    .is_failed = 0
                 };
                 xQueueSend(xPressedPisteQueue, &pressedPiste, 0);
 
@@ -488,15 +498,14 @@ void Engine_Thread(void *p)
 
                 int score;
                 get_score(&score);
-				set_score(score + 10);
+                set_score(score + 10);
             }
-            
             // Si la note est invalide
             else
             {
                 PressedPiste_t pressedPiste = {
-                	.pist_num = piste,
-                	.is_failed = 1
+                    .pist_num  = pisteReceive,
+                    .is_failed = 1
                 };
                 xQueueSend(xPressedPisteQueue, &pressedPiste, 0);
 
@@ -504,34 +513,33 @@ void Engine_Thread(void *p)
                 get_score(&score);
                 set_score(score - 10);
 
-                HAL_GPIO_WritePin(GPIOG, GPIO_PIN_14, GPIO_PIN_RESET);
-				HAL_GPIO_WritePin(GPIOG, GPIO_PIN_13, GPIO_PIN_SET);
-
                 Buzzer_SetFrequency(DO_D);
                 buzzerStop = now + pdMS_TO_TICKS(150);
                 buzzerOn = 1;
-            }
-        }
 
-        for (uint8_t piste = 0; piste < NUM_PISTES; piste++)
-        {
-            previousBtn[piste] = btn[piste];
+                HAL_GPIO_WritePin(GPIOG, GPIO_PIN_14, GPIO_PIN_RESET);
+                HAL_GPIO_WritePin(GPIOG, GPIO_PIN_13, GPIO_PIN_SET);
+            }
         }
 
         for (int k = 0; k < BUFF_SIZE; k++)
         {
-            if (buff[k].active && tick_diff(now, buff[k].hit_tick + pdMS_TO_TICKS(HIT_TOLERANCE_MS)) > 0)
-            {
+            if (!buff[k].active)
+                continue;
+
+            TickType_t winEnd = buff[k].hit_tick + pdMS_TO_TICKS(PARTITION[buff[k].partitionIndex].duration_ms);
+
+            if (tick_diff(now, winEnd) > 0)
                 buff[k].active = 0;
-            }
         }
 
         if (buzzerOn && tick_diff(now, buzzerStop) >= 0)
         {
             Buzzer_SetFrequency(0);
             buzzerOn = 0;
+
             HAL_GPIO_WritePin(GPIOG, GPIO_PIN_14, GPIO_PIN_RESET);
-			HAL_GPIO_WritePin(GPIOG, GPIO_PIN_13, GPIO_PIN_RESET);
+            HAL_GPIO_WritePin(GPIOG, GPIO_PIN_13, GPIO_PIN_RESET);
         }
 
         vTaskDelayUntil(&xLastWakeTime, pdMS_TO_TICKS(5));
@@ -545,18 +553,18 @@ int main(void)
 {
     HAL_Init();
     interfaces_init();
+
+    xNotesQueue = xQueueCreate(10, sizeof(DrawNote_t));
+    xPressedPisteQueue = xQueueCreate(10, sizeof(PressedPiste_t));
+    xButtonQueue = xQueueCreate(10, sizeof(uint8_t));
+
+    xScoreSemaphore = xSemaphoreCreateMutex();
+
     User_Buttons_Init();
     User_PWM_Buzzer_Init();
 
     GUI_Init();
     GUI_Initialized = 1;
-
-    xNotesQueue = xQueueCreate(10, sizeof(DrawNote_t));
-    xPressedPisteQueue = xQueueCreate(10, sizeof(PressedPiste_t));
-
-    xScoreSemaphore = xSemaphoreCreateMutex();
-
-    srand(SysTick->VAL);
 
     /* Creation des threads */
     if (!(pdPASS == xTaskCreate(Screen_Thread, "Screen", STACK_SIZE * 4, NULL, 1, NULL)))

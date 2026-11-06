@@ -145,6 +145,46 @@ void TIM3_IRQHandler(void)
 }
 
 /**
+  * @brief  This function handles EXTI line2 interrupt request (bouton piste 0).
+  * @param  None
+  * @retval None
+  */
+void EXTI2_IRQHandler(void)
+{
+  HAL_GPIO_EXTI_IRQHandler(GPIO_PIN_2);
+}
+
+/**
+  * @brief  This function handles EXTI line3 interrupt request (bouton piste 1).
+  * @param  None
+  * @retval None
+  */
+void EXTI3_IRQHandler(void)
+{
+  HAL_GPIO_EXTI_IRQHandler(GPIO_PIN_3);
+}
+
+/**
+  * @brief  This function handles EXTI line4 interrupt request (bouton piste 2).
+  * @param  None
+  * @retval None
+  */
+void EXTI4_IRQHandler(void)
+{
+  HAL_GPIO_EXTI_IRQHandler(GPIO_PIN_4);
+}
+
+/**
+  * @brief  This function handles EXTI lines 5 to 9 interrupt request (bouton piste 3).
+  * @param  None
+  * @retval None
+  */
+void EXTI9_5_IRQHandler(void)
+{
+  HAL_GPIO_EXTI_IRQHandler(GPIO_PIN_5);
+}
+
+/**
   * @brief  This function handles LTDC global interrupt request.
   * @param  None
   * @retval None
