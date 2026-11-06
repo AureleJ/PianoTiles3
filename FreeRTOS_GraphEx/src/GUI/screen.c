@@ -49,7 +49,7 @@ void display_header()
 	GUI_DrawLine(ui_box_width, 3, ui_box_width, ui_box_height);
 
 	display_score(0);
-	display_musique_name("Au clair de la lune");
+	display_musique_name("La Marche Imperiale.");
 }
 
 void display_note_section()

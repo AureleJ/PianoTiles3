@@ -147,49 +147,54 @@ typedef struct {
 
 const note_t PARTITION[] =
 {
-    /* Frère Jacques, Frère Jacques */
-    {     0, NOIRE,   DO,  0 },
-    {   600, NOIRE,   RE,  1 },
-    {  1200, NOIRE,   MI,  2 },
-    {  1800, NOIRE,   DO,  3 },
-    {  2400, NOIRE,   DO,  0 },
-    {  3000, NOIRE,   RE,  1 },
-    {  3600, NOIRE,   MI,  2 },
-    {  4200, NOIRE,   DO,  3 },
+    /* Mesures 1 & 2 : Thème principal */
+    {     0, NOIRE,           SOL,   1 },
+    {   600, NOIRE,           SOL,   3 },
+    {  1200, NOIRE,           SOL,   0 },
+    {  1800, CROCHE,          RE_D,  2 },
+    {  2100, CROCHE,          LA_D,  0 },
+    {  2400, NOIRE,           SOL,   3 },
+    {  3000, CROCHE,          RE_D,  1 },
+    {  3300, CROCHE,          LA_D,  2 },
+    {  3600, BLANCHE,         SOL,   0 },
 
-    /* Dormez-vous ? Dormez-vous ? */
-    {  4800, NOIRE,   MI,  0 },
-    {  5400, NOIRE,   FA,  1 },
-    {  6000, BLANCHE, SOL, 2 },
-    {  7200, NOIRE,   MI,  3 },
-    {  7800, NOIRE,   FA,  0 },
-    {  8400, BLANCHE, SOL, 1 },
+    /* Mesures 3 & 4 : Montée / Seconde phrase */
+    {  4800, NOIRE,           RE,    2 },
+    {  5400, NOIRE,           RE,    0 },
+    {  6000, NOIRE,           RE,    3 },
+    {  6600, CROCHE,          RE_D,  1 },
+    {  6900, CROCHE,          LA_D,  3 },
+    {  7200, NOIRE,           FA_D,  0 },
+    {  7800, CROCHE,          RE_D,  2 },
+    {  8100, CROCHE,          LA_D,  1 },
+    {  8400, BLANCHE,         SOL,   3 },
 
-    /* Sonnez les matines, sonnez les matines */
-    {  9600,  CROCHE, SOL, 2 },
-    {  9900,  CROCHE, LA,  3 },
-    { 10200,  CROCHE, SOL, 0 },
-    { 10500,  CROCHE, FA,  1 },
-    { 10800,  CROCHE, MI,  2 },
-    { 11100,  CROCHE, DO,  3 },
-    { 11400,  CROCHE, MI,  0 },
-    { 11700,  CROCHE, DO,  1 },
-    { 12000,  CROCHE, SOL, 2 },
-    { 12300,  CROCHE, LA,  3 },
-    { 12600,  CROCHE, SOL, 0 },
-    { 12900,  CROCHE, FA,  1 },
-    { 13200,  CROCHE, MI,  2 },
-    { 13500,  CROCHE, DO,  3 },
-    { 13800,  CROCHE, MI,  0 },
-    { 14100,  CROCHE, DO,  1 },
+    /* Mesures 5 & 6 : Deuxième section */
+    {  9600, NOIRE,           SOL,   0 },
+    { 10200, CROCHE,          SOL,   2 },
+    { 10500, CROCHE,          SOL,   1 },
+    { 10800, NOIRE,           SOL,   3 },
+    { 11400, CROCHE,          FA_D,  0 },
+    { 11700, CROCHE,          FA,    2 },
+    { 12000, CROCHE,          MI,    1 },
+    { 12300, CROCHE,          RE_D,  3 },
+    { 12600, NOIRE,           MI,    0 },
 
-    /* Ding, Dang, Dong ! Ding, Dang, Dong ! */
-    { 14400, NOIRE,   DO,  2 },
-    { 15000, NOIRE,   SOL, 3 },
-    { 15600, BLANCHE, DO,  0 },
-    { 16800, NOIRE,   DO,  1 },
-    { 17400, NOIRE,   SOL, 2 },
-    { 18000, BLANCHE, DO,  3 },
+    /* Transition */
+    { 13200, CROCHE,          SOL_D, 2 },
+    { 13500, NOIRE,           DO_D,  1 },
+    { 14100, CROCHE,          DO,    3 },
+    { 14400, CROCHE,          SI,    0 },
+    { 14700, CROCHE,          LA_D,  2 },
+    { 15000, CROCHE,          LA,    1 },
+    { 15300, NOIRE,           LA_D,  3 },
+
+    /* Résolution */
+    { 15900, CROCHE,          RE_D,  0 },
+    { 16200, NOIRE,           FA_D,  2 },
+    { 16800, CROCHE,          RE_D,  1 },
+    { 17100, CROCHE,          LA_D,  3 },
+    { 17400, BLANCHE,         SOL,   0 },
 };
 
 typedef struct {
@@ -385,11 +390,10 @@ void Engine_Thread(void *p)
 
     uint8_t previousBtn[NUM_PISTES] = {0};
 
-    const TickType_t tolTicks = pdMS_TO_TICKS(HIT_TOLERANCE_MS);
     const TickType_t songTicks = pdMS_TO_TICKS(PARTITION[PARTITION_LENGTH - 1].time_ms + PARTITION[PARTITION_LENGTH - 1].duration_ms + SONG_GAP_MS);
 
     TickType_t xLastWakeTime = xTaskGetTickCount();
-    TickType_t songStart = xTaskGetTickCount();
+    TickType_t songStart = xLastWakeTime;
     uint32_t noteIndex = 0;
 
     uint8_t buzzerOn = 0;
@@ -445,20 +449,23 @@ void Engine_Thread(void *p)
                 continue;
 
             int best = -1;
-            int32_t bestErr = (int32_t)tolTicks + 1;
-            for (int k = 0; k < BUFF_SIZE; k++)
-            {
-                if (!buff[k].active || buff[k].piste_num != piste)
-                    continue;
+			TickType_t bestHit = 0;
+			for (int k = 0; k < BUFF_SIZE; k++)
+			{
+				if (!buff[k].active || buff[k].piste_num != piste)
+					continue;
 
-                int32_t err = tick_diff(now, buff[k].hit_tick);
-                if (err < 0) err = -err;
-                if (err < bestErr)
-                {
-                    bestErr = err;
-                    best = k;
-                }
-            }
+				TickType_t winEnd = buff[k].hit_tick + pdMS_TO_TICKS(PARTITION[buff[k].partitionIndex].duration_ms);
+
+				if (tick_diff(now, buff[k].hit_tick - pdMS_TO_TICKS(PARTITION[buff[k].partitionIndex].duration_ms  - HIT_TOLERANCE_MS)) >= 0 && tick_diff(now, winEnd) <= 0)
+				{
+					if (best < 0 || tick_diff(buff[k].hit_tick, bestHit) < 0)
+					{
+						best = k;
+						bestHit = buff[k].hit_tick;
+					}
+				}
+			}
 
             // Si la note est valide
             if (best >= 0)
@@ -475,6 +482,9 @@ void Engine_Thread(void *p)
                 Buzzer_SetFrequency(n.pitch);
                 buzzerStop = now + pdMS_TO_TICKS(n.duration_ms);
                 buzzerOn = 1;
+
+                HAL_GPIO_WritePin(GPIOG, GPIO_PIN_13, GPIO_PIN_RESET);
+                HAL_GPIO_WritePin(GPIOG, GPIO_PIN_14, GPIO_PIN_SET);
 
                 int score;
                 get_score(&score);
@@ -494,6 +504,9 @@ void Engine_Thread(void *p)
                 get_score(&score);
                 set_score(score - 10);
 
+                HAL_GPIO_WritePin(GPIOG, GPIO_PIN_14, GPIO_PIN_RESET);
+				HAL_GPIO_WritePin(GPIOG, GPIO_PIN_13, GPIO_PIN_SET);
+
                 Buzzer_SetFrequency(DO_D);
                 buzzerStop = now + pdMS_TO_TICKS(150);
                 buzzerOn = 1;
@@ -507,7 +520,7 @@ void Engine_Thread(void *p)
 
         for (int k = 0; k < BUFF_SIZE; k++)
         {
-            if (buff[k].active && tick_diff(now, buff[k].hit_tick + tolTicks) > 0)
+            if (buff[k].active && tick_diff(now, buff[k].hit_tick + pdMS_TO_TICKS(HIT_TOLERANCE_MS)) > 0)
             {
                 buff[k].active = 0;
             }
@@ -517,6 +530,8 @@ void Engine_Thread(void *p)
         {
             Buzzer_SetFrequency(0);
             buzzerOn = 0;
+            HAL_GPIO_WritePin(GPIOG, GPIO_PIN_14, GPIO_PIN_RESET);
+			HAL_GPIO_WritePin(GPIOG, GPIO_PIN_13, GPIO_PIN_RESET);
         }
 
         vTaskDelayUntil(&xLastWakeTime, pdMS_TO_TICKS(5));
