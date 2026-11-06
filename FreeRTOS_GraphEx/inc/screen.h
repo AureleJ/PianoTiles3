@@ -32,6 +32,7 @@ typedef struct
     int y; // position vertical
 } DrawNote_t;
 
+
 void display_init_screen();
 void display_note(DrawNote_t val,int y);
 void display_note_section();

@@ -109,49 +109,38 @@ void clear_note(DrawNote_t val)
 {
     int step = XScreenSize / NB_PISTE;
 
-    GUI_RECT clipRect;
-    clipRect.x0 = 0;
-    clipRect.y0 = ui_box_height + 1;
-    clipRect.x1 = XScreenSize;
-    clipRect.y1 = YScreenSize - 3;
-
-    WM_SetUserClipRect(&clipRect);
-
     int x_min = val.piste_num * step + 4;
     int x_max = (val.piste_num + 1) * step - 3;
 
     int y_min = val.y;
     int y_max = val.y + val.height;
 
-    GUI_SetColor(COLOR_TILE_INACTIVE);
-    GUI_FillRect(x_min, y_min, x_max, y_max);
 
-    WM_SetUserClipRect(NULL);
+    if (y_min < ui_box_height + 1) y_min = ui_box_height + 1;
+    if (y_max > YScreenSize - 3) y_max = YScreenSize - 3;
+
+    if (y_min < y_max) {
+        GUI_SetColor(COLOR_TILE_INACTIVE);
+        GUI_FillRect(x_min, y_min, x_max, y_max);
+    }
 }
 
 void display_note(DrawNote_t val, int y)
 {
-	int step = XScreenSize / NB_PISTE;
+    int step = XScreenSize / NB_PISTE;
 
-	GUI_RECT clipRect;
-	clipRect.x0 = 0;
-	clipRect.y0 = ui_box_height + 1;
-	clipRect.x1 = XScreenSize;
-	clipRect.y1 = YScreenSize - 3;
+    int x0 = val.piste_num * step + 4;
+    int x1 = (val.piste_num + 1) * step - 3;
+    int y0 = y;
+    int y1 = y + val.height;
 
+    if (y0 < ui_box_height + 1) y0 = ui_box_height + 1;
+    if (y1 > YScreenSize - 3) y1 = YScreenSize - 3;
 
-	WM_SetUserClipRect(&clipRect);
-
-
-	int x0 = val.piste_num * step + 4;
-	int x1 = (val.piste_num + 1) * step - 3;
-	int y0 = y;
-	int y1 = y + val.height;
-
-	GUI_SetColor(COLOR_TILE_FALLING);
-	GUI_FillRect(x0, y0, x1, y1);
-
-	WM_SetUserClipRect(NULL);
+    if (y0 < y1) {
+        GUI_SetColor(COLOR_TILE_FALLING);
+        GUI_FillRect(x0, y0, x1, y1);
+    }
 }
 
 void display_init_screen()

@@ -35,12 +35,23 @@
 #include "screen.h"
 #include "stm32f4xx_hal.h"
 #include <stdio.h>
+#include <stdlib.h>
 #include "GUI.h"
 
 #define MODE 0 // 0 = graphes, 1 = console, 2 = Console+Trace
 #define STACK_SIZE 128 // A ajuster !!
+#define UI_BUFF_SIZE 32
 
 TIM_HandleTypeDef htim3;
+
+// 1. Déclaration de la file d'attente (Queue)
+QueueHandle_t xNotesQueue;
+
+// 2. Définition de la structure UiSlot_t (qui n'était pas déclarée)
+typedef struct {
+    DrawNote_t note;
+    int active;
+} UiSlot_t;
 
 /* sleep en millisecondes */
 void msleep(uint32_t ms)
@@ -118,6 +129,32 @@ void affTexte(char *m)
 		l = NLMIN;
 }
 
+void Note_Spawner_Thread(void *p)
+{
+    DrawNote_t new_note;
+    // On hardcode la taille pour ne pas interagir avec l'écran depuis ce thread
+    int y_screen = 320;
+    int ui_box_h = y_screen / 7;
+
+    int piste = 0; // Remplace rand() pour éviter le crash FreeRTOS
+
+    while (1)
+    {
+        // Fait spawner une note toutes les secondes
+        msleep(1000);
+
+        new_note.piste_num = piste;
+        piste = (piste + 1) % 4; // Cycle : 0, 1, 2, 3, 0...
+
+        new_note.height = 30;
+
+        // La note apparaît juste en dessous de la zone d'en-tête
+        new_note.y = (ui_box_h + 1) - new_note.height;
+
+        xQueueSend(xNotesQueue, &new_note, 0);
+    }
+}
+
 
 
 void Screen_Thread(void *p)
@@ -130,28 +167,55 @@ void Screen_Thread(void *p)
 	GUI_Clear();
 	display_init_screen();
 
+	/*
 	DrawNote_t val;
 	val.piste_num = 1;
 	val.height = 30;
 
-	val.y= (ui_box_height + 1) - val.height;
+	val.y= (ui_box_height + 1) - val.height;*/
+    static UiSlot_t slots[UI_BUFF_SIZE];
+    for (int i = 0; i < UI_BUFF_SIZE; i++)
+    {
+        slots[i].active = 0;
+    }
 
 	int score = 67;
 	int last_score = 0;
 
     while (1)
     {
-    	clear_note(val);
-
-		val.y += 2;
-
-		if (val.y >= YScreenSize - 3) {
-			val.y = (ui_box_height + 1) - val.height;
-			val.piste_num = (val.piste_num + 1) % 4;
+    	DrawNote_t temp;
+		while (xQueueReceive(xNotesQueue, &temp, 0) == pdPASS)
+		{
+			for (int i = 0; i < UI_BUFF_SIZE; i++)
+			{
+				if (!slots[i].active)
+				{
+					slots[i].note   = temp;
+					slots[i].active = 1;
+					break;
+				}
+			}
 		}
 
-		display_note(val, val.y);
+		for (int i = 0; i < UI_BUFF_SIZE; i++)
+		{
+			if (slots[i].active)
+			{
+				clear_note(slots[i].note);
 
+				slots[i].note.y += 1;
+
+
+				if (slots[i].note.y >= YScreenSize - 3) {
+					slots[i].active = 0; // On désactive la note, elle disparaît
+				}
+				else {
+					// On dessine la note à sa nouvelle position
+					display_note(slots[i].note, slots[i].note.y);
+				}
+			}
+		}
 		Draw_note_line();
 		Draw_bottom_line();
 
@@ -206,27 +270,33 @@ void Cursor_Thread(void *p)
  */
 int main(void)
 {
+    HAL_Init();
+    interfaces_init();
+    User_Buttons_Init();
+    User_PWM_Buzzer_Init();
 
-	HAL_Init();
+    GUI_Init();
+    GUI_Initialized = 1;
 
-	interfaces_init();
-	User_Buttons_Init();
-	User_PWM_Buzzer_Init();
+    // Création de la file d'attente capable de stocker 10 notes
+    xNotesQueue = xQueueCreate(10, sizeof(DrawNote_t));
 
-	GUI_Init();
-	GUI_Initialized = 1;
+    /* Creation des threads */
+    if (!(pdPASS == xTaskCreate(Cursor_Thread, "Cursor", STACK_SIZE * 4, NULL, 1, NULL)))
+        goto err;
 
-	/* Creation des threads */
-	if (!(pdPASS == xTaskCreate(Cursor_Thread, "Cursor", STACK_SIZE * 4, NULL, 1, NULL)))
-		goto err;
-	if (!(pdPASS == xTaskCreate(Screen_Thread, "Screen", STACK_SIZE * 4, NULL, 1, NULL)))
-			goto err;
+    if (!(pdPASS == xTaskCreate(Screen_Thread, "Screen", STACK_SIZE * 4, NULL, 1, NULL)))
+        goto err;
 
-	/* on lance le systeme ! */
-	vTaskStartScheduler();
+    // Lancement du nouveau thread générateur de notes
+    if (!(pdPASS == xTaskCreate(Note_Spawner_Thread, "Spawner", STACK_SIZE * 4, NULL, 1, NULL)))
+        goto err;
 
-	err:              // En principe jamais atteint !
-	while (1);
+    /* on lance le systeme ! */
+    vTaskStartScheduler();
 
-	return 0;
+err:
+    while (1);
+
+    return 0;
 }
